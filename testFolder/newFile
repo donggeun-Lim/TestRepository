@@ -1,0 +1,200 @@
+package org.project.one.controller;
+
+import java.io.File;
+import java.io.IOException;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
+import javax.servlet.http.HttpServletRequest;
+import javax.servlet.http.HttpServletResponse;
+//import javax.validation.Valid;
+import javax.validation.Valid;
+
+import org.project.one.service.BookService;
+import org.project.one.vo.BookVO;
+import org.project.one.vo.PagingVO;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Controller;
+import org.springframework.ui.Model;
+import org.springframework.validation.BindingResult;
+import org.springframework.web.bind.annotation.ModelAttribute;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestMethod;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.multipart.MultipartFile;
+import org.springframework.web.servlet.ModelAndView;
+
+@Controller
+public class MainController {
+	
+	@Autowired
+	private BookService bookService;
+	
+	public MainController(BookService bookService) {
+		this.bookService=bookService;
+	}
+
+	//메인
+	@RequestMapping("/")
+	public String main() {
+		return "main";
+	}
+
+	//목록
+	@RequestMapping("/list")
+	public ModelAndView list(@RequestParam(defaultValue="", required=false) String num,
+			Model model, PagingVO page,
+			HttpServletRequest request,
+			ModelAndView modelAndView) {
+		
+		Map<String, Integer> mapRow = new HashMap<>(); 
+		ModelAndView mv = new ModelAndView();
+
+		int count = bookService.count();
+		
+		String pageNum = request.getParameter("num");
+		if (pageNum==null) {
+			pageNum="1";
+		}
+		page.setCurrentPage(Integer.parseInt(pageNum));
+		page.calStartRow();
+		page.calEndRow();
+		mapRow.put("start", page.getStartRow());
+		mapRow.put("end", page.getEndRow());
+		
+		page.calPageCount(count);
+		page.calStartPage();
+		page.calEndPage();
+		
+		model.addAttribute("page", page);
+		mv.setViewName("list");
+		mv.addObject("page", page);
+		
+		List<BookVO> result = bookService.list(mapRow);
+		model.addAttribute("bookList", result);
+		
+		return mv;
+	}
+	
+	//내용
+	@RequestMapping("/read/{bookNum}")
+	public String read(@PathVariable("bookNum") int bookNum,
+			Model model) {
+		
+		BookVO vo = bookService.read(bookNum);
+		model.addAttribute("bookContent", vo);
+		return "content";
+	}
+	
+	//등록 (get)
+	@RequestMapping(value="/add", method=RequestMethod.GET)
+	public String add(Model model) {
+		model.addAttribute("bookVO", new BookVO());
+		return "add";
+	}
+	
+	//등록 (post)
+	@RequestMapping(value="/add", method=RequestMethod.POST)
+	public String addBook(@Valid BookVO bookVO,
+			BindingResult bindingResult,
+			MultipartFile uploadFile,
+			HttpServletResponse response,
+			Model model) {
+		
+		if (bindingResult.hasErrors()) {
+			return "add";
+		}
+		bookVO.setFileName(uploadFile.getOriginalFilename());
+		File saveFile = new File("C:\\sts\\sts4work\\book\\src\\main\\webapp\\resources\\upload", uploadFile.getOriginalFilename());
+		
+		try {
+			uploadFile.transferTo(saveFile);
+			bookService.add(bookVO);
+			
+			model.addAttribute("msg", "도서 등록을 완료하였습니다.");
+			model.addAttribute("url","list");
+			
+		} catch (IOException e) {
+			e.printStackTrace();
+		}
+        
+		return "alert";
+	}
+
+	//검색
+	@RequestMapping(value="/search", method=RequestMethod.GET)
+	public String search(HttpServletRequest request,
+			Model model) {
+		
+		String searchKeyword = request.getParameter("search");
+		List<BookVO> searchResult = bookService.search(searchKeyword);
+		
+		model.addAttribute("searchResult", searchResult);
+		return "search";
+	}
+
+	//삭제
+	@RequestMapping(value="/delete/{fileName:.+}")
+	public String delete(@PathVariable("fileName") String fileName,
+			HttpServletRequest request) {
+
+		bookService.delete(fileName);
+		
+		String filePath = "C:\\sts\\sts4work\\book\\src\\main\\webapp\\resources\\upload";
+		
+		File deleteFile = new File(filePath, fileName);
+		if (deleteFile.exists()) {
+			deleteFile.delete();
+		}
+		
+		return "redirect:/list";
+	}
+	
+	//수정 (get)
+	@RequestMapping(value="/update/{num}", method=RequestMethod.GET)
+	public String update(@PathVariable("num") int num,
+			Model model,
+			@ModelAttribute("updateForm") BookVO bookvo) {
+				
+		BookVO vo = bookService.read(num);
+		
+		model.addAttribute("updateSelect", vo);
+		return "update";
+	}
+	
+	//수정 (post)
+	@RequestMapping(value="/update/{num}", method=RequestMethod.POST)
+	public String updateSuccess(@PathVariable("num") int num,
+			@ModelAttribute("updateForm") BookVO bookvo,
+			MultipartFile uploadFile) {
+		
+		String fileName = uploadFile.getOriginalFilename();
+		bookvo.setFileName(fileName);
+
+		bookService.update(bookvo);
+		
+		File saveFile = new File("C:\\sts\\sts4work\\book\\src\\main\\webapp\\resources\\upload", fileName);
+		
+		try {
+			uploadFile.transferTo(saveFile);
+			
+		} catch (IOException e) {
+			e.printStackTrace();
+		}
+		
+		return "redirect:/list";
+	}
+	
+	//전체 삭제
+	@RequestMapping("/deleteAll")
+	public String deleteAll(Model model) {
+		
+		bookService.deleteAll();
+		model.addAttribute("msg", "도서 전체를 삭제하였습니다.");
+		model.addAttribute("url", "list");
+		return "alert";
+	}
+	
+}
